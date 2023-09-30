@@ -2,6 +2,9 @@
 //     let cdc = cdc::make_stream(source);
 // }
 
+pub mod backend;
+pub mod chunker;
+
 pub mod cdc {
     use fastcdc::v2020::AsyncStreamCDC;
     use tokio::io::AsyncRead;
