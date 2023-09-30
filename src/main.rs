@@ -1,16 +1,20 @@
 use std::net::SocketAddr;
 
-use axum::extract::BodyStream;
+use axum::extract::{BodyStream, Path};
 use axum::routing::post;
 use axum::Router;
 use futures_util::StreamExt;
 use kycok::backend::{Backend, Chunk, File};
-use kycok::chunker::{Chunker, FileConfig};
+use kycok::chunker::{Chunker, ChunkingStrategy, FileConfig};
+use tokio::io::AsyncRead;
 use tokio_util::io::StreamReader;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", post(upload_stuff));
+    let app = Router::new()
+        .route("/none", post(upload_none))
+        .route("/fixed/:chunk_size", post(upload_fixed))
+        .route("/cdc", post(upload_cdc));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
@@ -19,19 +23,49 @@ async fn main() {
         .unwrap();
 }
 
-// basic handler that responds with a static string
-async fn upload_stuff(body: BodyStream) -> &'static str {
-    let stream = body
-        .map(|result| result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
-    let read = StreamReader::new(stream);
+async fn upload_none(body: BodyStream) -> &'static str {
+    let chunker = Chunker::new(PrintBackend);
+    let config = FileConfig {
+        chunking_strategy: ChunkingStrategy::None,
+    };
+    chunker
+        .save_file(&config, &(), make_read(body))
+        .await
+        .unwrap();
 
+    "OK"
+}
+
+async fn upload_fixed(Path(chunk_size): Path<u32>, body: BodyStream) -> &'static str {
+    let chunker = Chunker::new(PrintBackend);
+    let config = FileConfig {
+        chunking_strategy: ChunkingStrategy::Fixed(chunk_size * 1024),
+    };
+    chunker
+        .save_file(&config, &(), make_read(body))
+        .await
+        .unwrap();
+
+    "OK"
+}
+
+async fn upload_cdc(body: BodyStream) -> &'static str {
     let chunker = Chunker::new(PrintBackend);
     let config = FileConfig {
         chunking_strategy: Default::default(),
     };
-    chunker.save_file(&config, &(), read).await.unwrap();
+    chunker
+        .save_file(&config, &(), make_read(body))
+        .await
+        .unwrap();
 
     "OK"
+}
+
+fn make_read(body: BodyStream) -> impl AsyncRead {
+    let stream = body
+        .map(|result| result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
+    StreamReader::new(stream)
 }
 
 struct PrintBackend;
