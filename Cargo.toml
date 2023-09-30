@@ -1,0 +1,18 @@
+[package]
+name = "kycok"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.75"
+async-compression = { version = "0.4.3", features = ["tokio", "zstd"] }
+axum = "0.6.20"
+blake3 = "1.5.0"
+fastcdc = { version = "3.1.0", features = ["tokio"] }
+futures-io = "0.3.28"
+futures-util = "0.3.28"
+tokio = { version = "1.32.0", features = ["rt", "macros", "rt-multi-thread"] }
+tokio-util = { version = "0.7.9", features = ["io"] }
+zstd = "0.12.4"
