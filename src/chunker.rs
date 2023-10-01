@@ -74,7 +74,7 @@ impl<B: Backend> Chunker<B> {
         loop {
             let mut steam_chunk = (&mut stream).take(chunk_size as u64);
 
-            let mut data = vec![];
+            let mut data = Vec::with_capacity(chunk_size as usize);
             let chunk_len = steam_chunk.read_to_end(&mut data).await? as u64;
             let hash = blake3::hash(&data);
 
