@@ -15,20 +15,10 @@ pub struct File<C> {
 
 #[async_trait::async_trait]
 pub trait Backend {
-    type Context;
-    type StoredChunk;
     type FileId;
     type Error: std::error::Error + Send + Sync + 'static;
 
-    async fn store_chunk(
-        &self,
-        ctx: &Self::Context,
-        chunk: Chunk,
-    ) -> Result<Self::StoredChunk, Self::Error>;
+    async fn push_chunk(&mut self, chunk: Vec<u8>) -> Result<(), Self::Error>;
 
-    async fn store_file(
-        &self,
-        ctx: &Self::Context,
-        file: File<Self::StoredChunk>,
-    ) -> Result<Self::FileId, Self::Error>;
+    async fn finish() -> Result<(), Self::Error>;
 }
