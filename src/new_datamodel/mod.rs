@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod fjall_impl;
 pub mod mem_impl;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]

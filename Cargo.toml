@@ -14,11 +14,13 @@ axum = "0.6.20"
 base16ct = "0.2.0"
 blake3 = "1.5.0"
 fastcdc = { version = "3.1.0", features = ["tokio"] }
+fjall = { version = "2.10.0", default-features = false, features = ["lz4", "ssi_tx"] }
 futures-util = "0.3.28"
 postcard = { version = "1.1.1", features = [
     "use-std",
 ], default-features = false }
 serde = { version = "1.0.219", features = ["derive"] }
+tempfile = "3.20.0"
 tokio = { version = "1.32.0", features = ["rt", "macros", "rt-multi-thread"] }
 tokio-util = { version = "0.7.9", features = ["io"] }
 uuid = { version = "1.16.0", features = ["v4"] }
