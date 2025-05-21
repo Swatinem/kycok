@@ -83,8 +83,6 @@ impl NamespacedFileStore<'_> {
 
     fn addref(&mut self, ty: refcounts::ReferenceCountType) {}
 
-    pub fn assemble_file_from_chunks(&mut self, chunks: Vec<chunk::ChunkId>) {}
-
     pub fn upload_chunk(&mut self, contents: &[u8]) -> chunk::ChunkId {
         let hash_bytes = *blake3::hash(contents).as_bytes();
         let chunk_id = chunk::ChunkId {
@@ -102,7 +100,9 @@ impl NamespacedFileStore<'_> {
                     .get_or_insert_with(|| segment::SegmentId {
                         uuid: uuid::Uuid::new_v4().into_bytes(),
                     });
-            self.addref(refcounts::ReferenceCountType::Segment(segment_id));
+
+            // TODO:
+            // self.addref(refcounts::ReferenceCountType::Segment(segment_id));
             let segment = self.filestore.segments.entry(segment_id).or_default();
 
             let offset_in_segment = segment.0.len() as u32;
@@ -122,7 +122,8 @@ impl NamespacedFileStore<'_> {
 
             self.filestore.chunks.insert(key, chunk);
         }
-        self.addref(refcounts::ReferenceCountType::Chunk(chunk_id));
+        // TODO:
+        // self.addref(refcounts::ReferenceCountType::Chunk(chunk_id));
 
         chunk_id
     }
@@ -154,7 +155,8 @@ impl NamespacedFileStore<'_> {
             contents,
         };
         self.filestore.files.insert((self.namespace, file_id), file);
-        self.addref(refcounts::ReferenceCountType::File(file_id));
+        // TODO:
+        // self.addref(refcounts::ReferenceCountType::File(file_id));
 
         file_id
     }
@@ -180,6 +182,43 @@ impl NamespacedFileStore<'_> {
                 contents
             }
         }
+    }
+
+    pub fn assemble_file_from_chunks(&mut self, chunks: &[chunk::ChunkId]) -> file::FileId {
+        let mut file_size = 0;
+        let mut file_hash = blake3::Hasher::new();
+        let chunks = chunks
+            .into_iter()
+            .copied()
+            .map(|chunk_id| {
+                let chunk_content = self.read_chunk(chunk_id);
+
+                file_size += chunk_content.len() as u64;
+                file_hash.update(chunk_content);
+
+                file::FileChunk {
+                    chunk_size: chunk_content.len() as u32,
+                    chunk_id,
+                }
+            })
+            .collect();
+
+        let file_id = file::FileId {
+            hash_algorithm: HashAlgorithm::Blake3,
+            _padding: [0; 3],
+            hash: *file_hash.finalize().as_bytes(),
+        };
+
+        let file = file::File {
+            size: file_size,
+            contents: file::FileContents::Chunked(chunks),
+        };
+
+        self.filestore.files.insert((self.namespace, file_id), file);
+        // TODO:
+        // self.addref(refcounts::ReferenceCountType::File(file_id));
+
+        file_id
     }
 }
 
@@ -210,6 +249,20 @@ mod tests {
 
         let file_id = fs.upload_file(contents);
         assert_eq!(fs.read_file(file_id), contents);
+
+        dbg!(&global_fs);
+    }
+
+    #[test]
+    fn test_filestore_prechunked() {
+        let mut global_fs = FileStore::default();
+
+        let mut fs = global_fs.with_namespace(Namespace(0));
+        let chunk_1 = fs.upload_chunk(b"some pre-chunked");
+        let chunk_2 = fs.upload_chunk(b" content");
+
+        let file_id = fs.assemble_file_from_chunks(&[chunk_1, chunk_2]);
+        assert_eq!(fs.read_file(file_id), b"some pre-chunked content");
 
         dbg!(&global_fs);
     }
