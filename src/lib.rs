@@ -7,3 +7,4 @@ pub mod blobstore;
 pub mod chunker;
 pub mod filestore;
 pub mod metastore;
+pub mod new_datamodel;
