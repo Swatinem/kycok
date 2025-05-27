@@ -6,22 +6,25 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.75"
-async-compression = { version = "0.4.3", features = ["tokio", "zstd"] }
-async-stream = "0.3.5"
-async-trait = "0.1.73"
-axum = "0.6.20"
+anyhow = "1.0.98"
+async-compression = { version = "0.4.23", features = ["tokio", "zstd"] }
+async-stream = "0.3.6"
+async-trait = "0.1.88"
+axum = "0.8.4"
 base16ct = "0.2.0"
-blake3 = "1.5.0"
-fastcdc = { version = "3.1.0", features = ["tokio"] }
-fjall = { version = "2.10.0", default-features = false, features = ["lz4", "ssi_tx"] }
-futures-util = "0.3.28"
+blake3 = "1.8.2"
+fastcdc = { version = "3.2.1", features = ["tokio"] }
+fjall = { version = "2.10.0", default-features = false, features = [
+    "lz4",
+    "ssi_tx",
+] }
+futures-util = "0.3.31"
 postcard = { version = "1.1.1", features = [
     "use-std",
 ], default-features = false }
 serde = { version = "1.0.219", features = ["derive"] }
 tempfile = "3.20.0"
-tokio = { version = "1.32.0", features = ["rt", "macros", "rt-multi-thread"] }
-tokio-util = { version = "0.7.9", features = ["io"] }
-uuid = { version = "1.16.0", features = ["v4"] }
-zstd = "0.12.4"
+tokio = { version = "1.45.1", features = ["rt", "macros", "rt-multi-thread"] }
+tokio-util = { version = "0.7.15", features = ["io"] }
+uuid = { version = "1.17.0", features = ["v4"] }
+zstd = "0.13.3"
