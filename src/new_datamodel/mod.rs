@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha1::{Digest as _, Sha1};
 
 pub mod fjall_impl;
 pub mod mem_impl;
@@ -8,6 +9,37 @@ pub mod mem_impl;
 pub enum HashAlgorithm {
     Sha1 = 0,
     Blake3 = 1,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[repr(C)]
+pub struct ContentHash {
+    pub hash_algorithm: HashAlgorithm,
+    pub _padding: [u8; 3],
+    pub hash_bytes: [u8; 28],
+}
+
+impl ContentHash {
+    pub fn new(contents: &[u8]) -> Self {
+        let hash_algorithm = HashAlgorithm::Blake3;
+
+        let mut hash_bytes = [0; 28];
+        match hash_algorithm {
+            HashAlgorithm::Sha1 => {
+                let sha1_hash = Sha1::digest(contents);
+                (&mut hash_bytes[..20]).copy_from_slice(sha1_hash.as_slice());
+            }
+            HashAlgorithm::Blake3 => {
+                let blake3_hash = blake3::hash(contents);
+                hash_bytes.copy_from_slice(&blake3_hash.as_bytes()[..28]);
+            }
+        }
+        Self {
+            hash_algorithm: hash_algorithm,
+            _padding: [0; 3],
+            hash_bytes,
+        }
+    }
 }
 
 pub mod chunk {
@@ -23,10 +55,11 @@ pub mod chunk {
     /// The content-addressable ID of a `Chunk`
     #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
     #[repr(C)]
-    pub struct ChunkId {
-        pub hash_algorithm: HashAlgorithm,
-        pub _padding: [u8; 3],
-        pub hash: [u8; 32],
+    pub struct ChunkId(pub ContentHash);
+    impl ChunkId {
+        pub fn from_contents(contents: &[u8]) -> Self {
+            Self(ContentHash::new(contents))
+        }
     }
 
     /// Chunk metadata, in particular where it is stored
@@ -46,10 +79,11 @@ pub mod file {
     /// The content-addressable ID of a `File`
     #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
     #[repr(C)]
-    pub struct FileId {
-        pub hash_algorithm: HashAlgorithm,
-        pub _padding: [u8; 3],
-        pub hash: [u8; 32],
+    pub struct FileId(pub ContentHash);
+    impl FileId {
+        pub fn from_contents(contents: &[u8]) -> Self {
+            Self(ContentHash::new(contents))
+        }
     }
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -122,37 +156,27 @@ mod dbg {
         }
     }
 
-    impl fmt::Debug for chunk::ChunkId {
+    impl fmt::Debug for ContentHash {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self.hash_algorithm {
                 HashAlgorithm::Sha1 => {
-                    write!(
-                        f,
-                        "ChunkId(SHA1:{:x})",
-                        base16ct::HexDisplay(&self.hash[..20])
-                    )
+                    write!(f, "SHA1:{:x}", base16ct::HexDisplay(&self.hash_bytes[..20]))
                 }
                 HashAlgorithm::Blake3 => {
-                    write!(f, "ChunkId(BLAKE3:{:x})", base16ct::HexDisplay(&self.hash))
+                    write!(f, "BLAKE3:{:x}", base16ct::HexDisplay(&self.hash_bytes))
                 }
             }
         }
     }
 
+    impl fmt::Debug for chunk::ChunkId {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "ChunkId({:?})", self.0)
+        }
+    }
     impl fmt::Debug for file::FileId {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self.hash_algorithm {
-                HashAlgorithm::Sha1 => {
-                    write!(
-                        f,
-                        "FileId(SHA1:{:x})",
-                        base16ct::HexDisplay(&self.hash[..20])
-                    )
-                }
-                HashAlgorithm::Blake3 => {
-                    write!(f, "FileId(BLAKE3:{:x})", base16ct::HexDisplay(&self.hash))
-                }
-            }
+            write!(f, "FileId({:?})", self.0)
         }
     }
 

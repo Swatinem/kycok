@@ -1,10 +1,11 @@
 use core::fmt;
 use std::collections::HashMap;
+use std::sync::RwLock;
 
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Namespace(u64);
+pub struct Namespace(pub u64);
 impl fmt::Debug for Namespace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Namespace({})", self.0)
@@ -30,6 +31,7 @@ impl fmt::Debug for Segment {
 pub struct FileStore {
     chunks: HashMap<(Namespace, chunk::ChunkId), chunk::Chunk>,
     files: HashMap<(Namespace, file::FileId), file::File>,
+    named_files: HashMap<(Namespace, String), file::FileId>,
 
     segments: HashMap<segment::SegmentId, Segment>,
     last_segment: Option<segment::SegmentId>,
@@ -42,9 +44,9 @@ pub struct FileStore {
 }
 
 impl FileStore {
-    pub fn with_namespace(&mut self, namespace: Namespace) -> NamespacedFileStore {
+    pub fn with_namespace(slf: &RwLock<Self>, namespace: Namespace) -> NamespacedFileStore {
         NamespacedFileStore {
-            filestore: self,
+            filestore: slf,
             config: Config::default(),
             namespace,
         }
@@ -70,46 +72,38 @@ impl Default for Config {
 }
 
 pub struct NamespacedFileStore<'fs> {
-    filestore: &'fs mut FileStore,
+    filestore: &'fs RwLock<FileStore>,
     config: Config,
     namespace: Namespace,
 }
 
 impl NamespacedFileStore<'_> {
-    pub fn with_config(&mut self, config: Config) -> &mut Self {
+    pub fn with_config(mut self, config: Config) -> Self {
         self.config = config;
         self
     }
 
-    fn addref(&mut self, ty: refcounts::ReferenceCountType) {}
+    // fn addref(&mut self, ty: refcounts::ReferenceCountType) {}
 
-    pub fn upload_chunk(&mut self, contents: &[u8]) -> chunk::ChunkId {
-        let hash_bytes = *blake3::hash(contents).as_bytes();
-        let chunk_id = chunk::ChunkId {
-            hash_algorithm: HashAlgorithm::Blake3,
-            _padding: [0; 3],
-            hash: hash_bytes,
-        };
-
+    pub fn upload_chunk(&self, contents: &[u8]) -> chunk::ChunkId {
+        let chunk_id = chunk::ChunkId::from_contents(contents);
         let key = (self.namespace, chunk_id);
-        if !self.filestore.chunks.contains_key(&key) {
-            let segment_id =
-                *self
-                    .filestore
-                    .last_segment
-                    .get_or_insert_with(|| segment::SegmentId {
-                        uuid: uuid::Uuid::new_v4().into_bytes(),
-                    });
+
+        let mut fs = self.filestore.write().unwrap();
+        if !fs.chunks.contains_key(&key) {
+            let segment_id = *fs.last_segment.get_or_insert_with(|| segment::SegmentId {
+                uuid: uuid::Uuid::new_v4().into_bytes(),
+            });
 
             // TODO:
             // self.addref(refcounts::ReferenceCountType::Segment(segment_id));
-            let segment = self.filestore.segments.entry(segment_id).or_default();
+            let segment = fs.segments.entry(segment_id).or_default();
 
             let offset_in_segment = segment.0.len() as u32;
             segment.0.extend_from_slice(contents);
 
             if segment.0.len() as u64 >= self.config.segment_size {
-                self.filestore.last_segment.take();
+                fs.last_segment.take();
             }
 
             let chunk = chunk::Chunk {
@@ -120,7 +114,7 @@ impl NamespacedFileStore<'_> {
                 offset_in_segment,
             };
 
-            self.filestore.chunks.insert(key, chunk);
+            fs.chunks.insert(key, chunk);
         }
         // TODO:
         // self.addref(refcounts::ReferenceCountType::Chunk(chunk_id));
@@ -128,13 +122,8 @@ impl NamespacedFileStore<'_> {
         chunk_id
     }
 
-    pub fn upload_file(&mut self, contents: &[u8]) -> file::FileId {
-        let hash_bytes = *blake3::hash(contents).as_bytes();
-        let file_id = file::FileId {
-            hash_algorithm: HashAlgorithm::Blake3,
-            _padding: [0; 3],
-            hash: hash_bytes,
-        };
+    pub fn upload_file(&self, contents: &[u8]) -> file::FileId {
+        let file_id = file::FileId::from_contents(contents);
 
         let file_size = contents.len() as u64;
         let contents = if file_size <= self.config.inline_size {
@@ -154,71 +143,90 @@ impl NamespacedFileStore<'_> {
             size: file_size,
             contents,
         };
-        self.filestore.files.insert((self.namespace, file_id), file);
+        let mut fs = self.filestore.write().unwrap();
+        fs.files.insert((self.namespace, file_id), file);
         // TODO:
         // self.addref(refcounts::ReferenceCountType::File(file_id));
 
         file_id
     }
 
-    pub fn read_chunk(&self, chunk_id: chunk::ChunkId) -> &[u8] {
-        let chunk = &self.filestore.chunks[&(self.namespace, chunk_id)];
-        let segment = &self.filestore.segments[&chunk.segment_id];
+    pub fn read_chunk(&self, chunk_id: chunk::ChunkId) -> Vec<u8> {
+        let fs = self.filestore.read().unwrap();
+
+        let chunk = &fs.chunks[&(self.namespace, chunk_id)];
+        let segment = &fs.segments[&chunk.segment_id];
         let start = chunk.offset_in_segment as usize;
         let range = start..start + chunk.size as usize;
-        &segment.0[range]
+        (&segment.0[range]).into()
     }
 
-    pub fn read_file(&mut self, file_id: file::FileId) -> Vec<u8> {
-        let file = &self.filestore.files[&(self.namespace, file_id)];
+    pub fn read_file(&self, file_id: file::FileId) -> Vec<u8> {
+        let fs = self.filestore.read().unwrap();
+
+        let file = &fs.files[&(self.namespace, file_id)];
 
         match &file.contents {
             file::FileContents::Inline(contents) => contents.clone(),
             file::FileContents::Chunked(chunks) => {
                 let mut contents = Vec::with_capacity(file.size as usize);
                 for file::FileChunk { chunk_id, .. } in chunks {
-                    contents.extend_from_slice(self.read_chunk(*chunk_id));
+                    contents.extend_from_slice(&self.read_chunk(*chunk_id));
                 }
                 contents
             }
         }
     }
 
-    pub fn assemble_file_from_chunks(&mut self, chunks: &[chunk::ChunkId]) -> file::FileId {
-        let mut file_size = 0;
-        let mut file_hash = blake3::Hasher::new();
-        let chunks = chunks
-            .into_iter()
-            .copied()
-            .map(|chunk_id| {
-                let chunk_content = self.read_chunk(chunk_id);
+    // pub fn assemble_file_from_chunks(&self, chunks: &[chunk::ChunkId]) -> file::FileId {
+    //     let mut file_size = 0;
+    //     let mut file_hash = blake3::Hasher::new();
+    //     let chunks = chunks
+    //         .into_iter()
+    //         .copied()
+    //         .map(|chunk_id| {
+    //             let chunk_content = self.read_chunk(chunk_id);
 
-                file_size += chunk_content.len() as u64;
-                file_hash.update(chunk_content);
+    //             file_size += chunk_content.len() as u64;
+    //             file_hash.update(&chunk_content);
 
-                file::FileChunk {
-                    chunk_size: chunk_content.len() as u32,
-                    chunk_id,
-                }
-            })
-            .collect();
+    //             file::FileChunk {
+    //                 chunk_size: chunk_content.len() as u32,
+    //                 chunk_id,
+    //             }
+    //         })
+    //         .collect();
 
-        let file_id = file::FileId {
-            hash_algorithm: HashAlgorithm::Blake3,
-            _padding: [0; 3],
-            hash: *file_hash.finalize().as_bytes(),
-        };
+    //     let file_id = file::FileId {
+    //         hash_algorithm: HashAlgorithm::Blake3,
+    //         _padding: [0; 3],
+    //         hash: *file_hash.finalize().as_bytes(),
+    //     };
 
-        let file = file::File {
-            size: file_size,
-            contents: file::FileContents::Chunked(chunks),
-        };
+    //     let file = file::File {
+    //         size: file_size,
+    //         contents: file::FileContents::Chunked(chunks),
+    //     };
 
-        self.filestore.files.insert((self.namespace, file_id), file);
-        // TODO:
-        // self.addref(refcounts::ReferenceCountType::File(file_id));
+    //     let mut fs = self.filestore.write().unwrap();
+    //     fs.files.insert((self.namespace, file_id), file);
+    //     // TODO:
+    //     // self.addref(refcounts::ReferenceCountType::File(file_id));
 
-        file_id
+    //     file_id
+    // }
+
+    pub fn associate_filename(&self, file_id: file::FileId, name: &str) {
+        let mut fs = self.filestore.write().unwrap();
+        fs.named_files
+            .insert((self.namespace, name.into()), file_id);
+    }
+
+    pub fn read_named_file(&self, name: &str) -> Vec<u8> {
+        let fs = self.filestore.read().unwrap();
+        let file_id = &fs.named_files[&(self.namespace, name.to_string())];
+
+        self.read_file(*file_id)
     }
 }
 
@@ -228,16 +236,15 @@ mod tests {
 
     #[test]
     fn test_filestore() {
-        let mut global_fs = FileStore::default();
+        let global_fs = RwLock::new(FileStore::default());
 
-        let mut fs = global_fs.with_namespace(Namespace(0));
+        let fs = FileStore::with_namespace(&global_fs, Namespace(0));
         let file_id = fs.upload_file(b"inlined file");
         assert_eq!(fs.read_file(file_id), b"inlined file");
 
         dbg!(&global_fs);
 
-        let mut fs = global_fs.with_namespace(Namespace(1));
-        fs.with_config(Config {
+        let fs = FileStore::with_namespace(&global_fs, Namespace(1)).with_config(Config {
             inline_size: 4,
             chunk_size: 16,
             segment_size: 32,
@@ -253,17 +260,17 @@ mod tests {
         dbg!(&global_fs);
     }
 
-    #[test]
-    fn test_filestore_prechunked() {
-        let mut global_fs = FileStore::default();
+    // #[test]
+    // fn test_filestore_prechunked() {
+    //     let mut global_fs = FileStore::default();
 
-        let mut fs = global_fs.with_namespace(Namespace(0));
-        let chunk_1 = fs.upload_chunk(b"some pre-chunked");
-        let chunk_2 = fs.upload_chunk(b" content");
+    //     let fs = global_fs.with_namespace(Namespace(0));
+    //     let chunk_1 = fs.upload_chunk(b"some pre-chunked");
+    //     let chunk_2 = fs.upload_chunk(b" content");
 
-        let file_id = fs.assemble_file_from_chunks(&[chunk_1, chunk_2]);
-        assert_eq!(fs.read_file(file_id), b"some pre-chunked content");
+    //     let file_id = fs.assemble_file_from_chunks(&[chunk_1, chunk_2]);
+    //     assert_eq!(fs.read_file(file_id), b"some pre-chunked content");
 
-        dbg!(&global_fs);
-    }
+    //     dbg!(&global_fs);
+    // }
 }

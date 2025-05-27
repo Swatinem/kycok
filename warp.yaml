@@ -1,0 +1,39 @@
+# docker run -p 9000:9000 --rm -it minio/minio:latest server /data
+# docker run -p 8333:8333 --rm -it chrislusf/seaweedfs server -s3
+
+warp:
+  api: v1
+  benchmark: mixed
+
+  params:
+    duration: 10s
+    concurrent: 8
+
+    distribution:
+      put: 98.0
+      get: 2.0
+      delete: 0.0
+      stat: 0.0
+
+    # objects: 50
+    obj:
+      size: 100KiB
+      rand-size: true
+
+    # no-clear: true
+
+  analyze:
+    verbose: true
+
+  remote:
+    # bucket: "1234"
+
+    host:
+    - "localhost:9000"
+    # - "localhost:8333"
+
+    access-key: "minioadmin"
+    secret-key: "minioadmin"
+
+  # advanced:
+  #   debug: true
