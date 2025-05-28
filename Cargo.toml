@@ -1,3 +1,7 @@
+[workspace]
+resolver = "3"
+members = ["stresstest"]
+
 [package]
 name = "kycok"
 version = "0.1.0"

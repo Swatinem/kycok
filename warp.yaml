@@ -6,8 +6,8 @@ warp:
   benchmark: mixed
 
   params:
-    duration: 10s
-    concurrent: 8
+    duration: 20s
+    concurrent: 32
 
     distribution:
       put: 98.0
@@ -31,6 +31,7 @@ warp:
     host:
     - "localhost:9000"
     # - "localhost:8333"
+    #  - "localhost:8080"
 
     access-key: "minioadmin"
     secret-key: "minioadmin"
