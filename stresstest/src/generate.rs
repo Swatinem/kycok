@@ -8,14 +8,16 @@ trait DynWorkload {
     fn sample_payload(&self, seed: u64) -> Payload;
 }
 
-pub struct Workload<S, A> {
-    /// A distribution that generates payload sizes.
+pub struct Workload<S, A, R> {
+    /// A distribution that generates payload sizes for the `write` action.
     size_distribution: S,
     /// A distribution that generates actions, such as write/read/delete.
     action_distribution: A,
+    /// A distribution that picks a previously written file, to either `read` or `delete` it.
+    read_distribution: R,
 }
 
-impl<S, A> DynWorkload for Workload<S, A>
+impl<S, A, R> DynWorkload for Workload<S, A, R>
 where
     S: Distribution<f64>,
 {
