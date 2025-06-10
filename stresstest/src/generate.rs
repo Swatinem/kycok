@@ -9,7 +9,9 @@ trait DynWorkload {
 }
 
 pub struct Workload<S, A> {
+    /// A distribution that generates payload sizes.
     size_distribution: S,
+    /// A distribution that generates actions, such as write/read/delete.
     action_distribution: A,
 }
 
