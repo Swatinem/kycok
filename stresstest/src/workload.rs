@@ -7,15 +7,16 @@ use rand_distr::weighted::WeightedIndex;
 use rand_distr::{Distribution, LogNormal, Zipf};
 
 pub struct WorkloadBuilder {
-    pub concurrency: usize,
-    pub seed: u64,
+    name: &'static str,
+    concurrency: usize,
+    seed: u64,
 
-    pub p50_size: u64,
-    pub p99_size: u64,
+    p50_size: u64,
+    p99_size: u64,
 
-    pub write_weight: u8,
-    pub read_weight: u8,
-    pub delete_weight: u8,
+    write_weight: u8,
+    read_weight: u8,
+    delete_weight: u8,
 }
 
 impl WorkloadBuilder {
@@ -56,7 +57,8 @@ impl WorkloadBuilder {
             WeightedIndex::new(&[self.write_weight, self.read_weight, self.delete_weight]).unwrap();
 
         Workload {
-            config: self,
+            name: self.name,
+            concurrency: self.concurrency,
 
             rng,
             size_distribution,
@@ -68,7 +70,8 @@ impl WorkloadBuilder {
 }
 
 pub struct Workload {
-    pub config: WorkloadBuilder,
+    pub name: &'static str,
+    pub concurrency: usize,
 
     /// The RNG driving all our distributions.
     rng: SmallRng,
@@ -82,8 +85,9 @@ pub struct Workload {
 }
 
 impl Workload {
-    pub fn builder() -> WorkloadBuilder {
+    pub fn builder(name: &'static str) -> WorkloadBuilder {
         WorkloadBuilder {
+            name,
             concurrency: available_parallelism().unwrap().get(),
             seed: rand::random(),
 
@@ -182,7 +186,9 @@ mod tests {
 
     #[test]
     fn lognormal_percentiles_work() {
-        let workload = Workload::builder().size_distribution(100, 1000).build();
+        let workload = Workload::builder("test")
+            .size_distribution(100, 1000)
+            .build();
 
         let mut sizes: Vec<_> = (0..100)
             .map(|seed| workload.get_payload(seed).len)

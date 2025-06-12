@@ -15,7 +15,7 @@ async fn main() {
         master_url: "http://localhost:9333".into(),
         client: reqwest::Client::new(),
     };
-    let workload = Workload::builder()
+    let workload = Workload::builder("testing")
         .concurrency(32)
         .size_distribution(16 * 1024, 1024 * 1024) // p50 = 16K, p99 = 1M
         .action_weights(98, 2, 0)
