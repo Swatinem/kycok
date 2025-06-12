@@ -6,8 +6,8 @@ use crate::workload::{DynWorkload, Payload, WorkloadAction};
 pub struct InternalId(u64);
 
 pub struct BatchGenerator<ExternalId> {
-    workload: Box<dyn DynWorkload>,
-    existing_files: IndexMap<InternalId, ExternalId>,
+    pub workload: Box<dyn DynWorkload>,
+    pub existing_files: IndexMap<InternalId, ExternalId>,
 }
 
 impl<ExternalId: Clone> BatchGenerator<ExternalId> {

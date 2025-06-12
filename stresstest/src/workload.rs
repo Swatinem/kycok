@@ -21,11 +21,11 @@ pub trait DynWorkload {
 
 pub struct Workload<S> {
     /// The RNG driving all our distributions.
-    rng: SmallRng,
+    pub rng: SmallRng,
     /// A distribution that generates payload sizes for the `write` action.
-    size_distribution: S,
+    pub size_distribution: S,
     /// A distribution that generates actions, such as write/read/delete.
-    action_distribution: WeightedIndex<u8>,
+    pub action_distribution: WeightedIndex<u8>,
 }
 
 impl<S> DynWorkload for Workload<S>
@@ -71,6 +71,7 @@ impl io::Read for Payload {
         let fill_buf = &mut buf[..len_to_fill];
         self.rng.fill_bytes(fill_buf);
 
+        self.len -= len_to_fill as u64;
         Ok(len_to_fill)
     }
 }
