@@ -2,9 +2,7 @@ use std::convert::Infallible;
 use std::io::Read;
 use std::task::Poll;
 
-use futures_util::StreamExt as _;
-use reqwest::multipart::Part;
-use reqwest::{Body, multipart};
+use reqwest::Body;
 use serde::Deserialize;
 
 use crate::workload::Payload;
@@ -83,25 +81,24 @@ impl SeaweedClient {
         first_volume.public_url
     }
 
-    pub async fn read(&self, id: String, mut payload: Payload) {
-        let volume_url = self.lookup_volume_url(&id).await;
+    pub async fn read(&self, id: &str, mut payload: Payload) {
+        let volume_url = self.lookup_volume_url(id).await;
         let file_url = format!("http://{volume_url}/{id}");
-        let mut stream = self
+        let file_contents = self
             .client
             .get(file_url)
             .send()
             .await
             .unwrap()
-            .bytes_stream();
+            .bytes()
+            .await
+            .unwrap();
 
-        let mut comparison_buffer = Vec::new();
+        let mut expected_payload = Vec::new();
+        payload.read_to_end(&mut expected_payload).unwrap();
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.unwrap();
-            comparison_buffer.resize(chunk.len(), 0);
-            let read_len = payload.read(&mut comparison_buffer).unwrap();
-            assert_eq!(read_len, chunk.len());
-            assert_eq!(chunk, &comparison_buffer);
+        if file_contents != &expected_payload {
+            panic!("readback mismatch?");
         }
     }
 
